@@ -25,9 +25,9 @@ async function run() {
     await client.connect();
     console.log("Connected to MongoDB");
 
-    const db = client.db("relife-donation");
+    const db = client.db("mobile-gadget");
     const userCollection = db.collection("users");
-    const donationCollection = db.collection("donations");
+    const productCollection = db.collection("products");
 
     // User Registration
     app.post("/api/v1/register", async (req, res) => {
@@ -85,130 +85,109 @@ async function run() {
     // ==============================================================
     // WRITE YOUR CODE HERE
 
-    app.post("/api/v1/donations", async (req, res) => {
-      const supply = req.body;
-      const result = await donationCollection.insertOne(supply);
-
-      res.status(201).json({
-        success: true,
-        message: "Donation created successfully",
-        result,
-      });
+    app.post("/products", async (req, res) => {
+      const products = req.body;
+      const result = await productCollection.insertOne(products);
+      return res.send(result);
     });
-
-    app.get("/api/v1/donations", async (req, res) => {
-      const result = await donationCollection.find().toArray();
-
-      res.status(201).json({
-        success: true,
-        message: "All Donation retrieved successfully",
-        result,
-      });
-    });
-
-    app.get("/api/v1/donations/:id", async (req, res) => {
+    // ==============================================================
+    app.get("/products", async (req, res) => {
       try {
-        const id = req.params.id;
-        console.log(id);
+        const result = await productCollection.find().toArray();
+        return res.status(200).json({
+          success: true,
+          message: "All Product fetched successfully",
+          result,
+        });
+      } catch (error) {
+        return res.send({ message: "Error server" });
+      }
+    });
+    // ==============================================================
+    app.get("/products/filter", async (req, res) => {
+      const query = req.query;
+      let filter = {};
 
-        const result = await donationCollection.findOne({
-          _id: new ObjectId(id), // Corrected ObjectID usage
+      // Handle filtering by rating
+      if (query.rating) {
+        const rating = parseFloat(query.rating);
+        filter.rating = { $lte: rating };
+      }
+
+      // Handle filtering by price range
+      if (query.price) {
+        const [minPrice, maxPrice] = query.price.split("-");
+        filter.price = {
+          $gte: parseFloat(minPrice),
+          $lte: parseFloat(maxPrice),
+        };
+      }
+
+      // Handle filtering by flash sale
+      if (query.flashSale) {
+        const flashSale = query.flashSale === "true";
+        filter.flashSale = flashSale;
+      }
+
+      // Handle filtering by top rated
+      if (query.topRated) {
+        const topRated = query.topRated === "true";
+        filter.topRated = topRated;
+      }
+
+      try {
+        // Fetch products based on the constructed filter
+        const result = await productCollection.find(filter).toArray();
+
+        // Return the result
+        return res.status(200).json({
+          success: true,
+          message: "Products fetched successfully",
+          result: result,
+        });
+      } catch (error) {
+        // Handle any errors that may occur
+        console.error("Error fetching products:", error);
+        return res.status(500).json({
+          success: false,
+          message: "An error occurred while fetching products",
+          error: error.message,
+        });
+      }
+    });
+
+    // ==============================================================
+    app.get("/products/:id", async (req, res) => {
+      try {
+        const { id } = req.params;
+
+        // Check if the id parameter is a valid ObjectId string
+        if (!ObjectId.isValid(id)) {
+          return res
+            .status(400)
+            .json({ success: false, error: "Invalid product ID" });
+        }
+
+        const result = await productCollection.findOne({
+          _id: new ObjectId(id),
         });
 
         if (!result) {
-          return res.status(404).json({
-            success: false,
-            message: "Donation not found",
-          });
+          return res
+            .status(404)
+            .json({ success: false, error: "Product not found" });
         }
 
-        res.status(200).json({
+        return res.status(200).json({
           success: true,
-          message: "Donation fetched successfully",
+          message: "Product fetched successfully",
           result,
         });
       } catch (error) {
-        console.error("Error fetching supply:", error);
-        res.status(500).json({
-          success: false,
-          message: "Internal server error",
-        });
-      }
-    });
-
-    app.patch("/api/v1/donations/:id", async (req, res) => {
-      try {
-        const id = req.params.id;
-        const dataToUpdate = req.body;
-        const updateObject = {};
-
-        for (const key in dataToUpdate) {
-          if (dataToUpdate[key] !== undefined) {
-            updateObject[key] = dataToUpdate[key];
-          }
-        }
-
-        const result = await donationCollection.findOneAndUpdate(
-          { _id: new ObjectId(id) },
-          { $set: updateObject },
-          { returnOriginal: false, new: true }
-        );
-
-        res.status(201).json({
-          success: true,
-          message: "Donation updated successfully",
-          result,
-        });
-      } catch (error) {
-        console.error("Error updating supply:", error);
-        res
+        console.error("Error:", error);
+        return res
           .status(500)
-          .json({ success: false, message: "Failed to update supply" });
-      }
-    });
-
-    app.delete("/api/v1/donations/:id", async (req, res) => {
-      // find into the database
-      const id = req.params.id;
-
-      const result = await donationCollection.findOneAndDelete({
-        _id: new ObjectId(id),
-      });
-
-      res.status(201).json({
-        success: true,
-        message: "Donation deleted successfully",
-        result,
-      });
-    });
-
-    app.get("/api/v1/statistics", async (req, res) => {
-      try {
-        const pipeline = [
-          {
-            $group: {
-              _id: "$category",
-              totalDonation: { $sum: "$amount" },
-              totalItem: { $sum: 1 },
-            },
-          },
-          {
-            $group: {
-              _id: null,
-              totalDonationSum: { $sum: "$totalDonation" },
-              statistics: { $push: "$$ROOT" },
-            },
-          },
-        ];
-
-        const result = await donationCollection.aggregate(pipeline).toArray();
-        const statisticsInfo = {
-          totalDonationSum: result[0]?.totalDonationSum,
-          statistics: result[0]?.statistics,
-        };
-        res.json(statisticsInfo);
-      } catch (error) {
-        console.log(error);
+          .json({ success: false, error: "Internal server error" });
       }
     });
 
