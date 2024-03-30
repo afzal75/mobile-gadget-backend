@@ -103,7 +103,7 @@ async function run() {
         return res.send({ message: "Error server" });
       }
     });
-    // ==============================================================
+
     app.get("/products/filter", async (req, res) => {
       const query = req.query;
       let filter = {};
